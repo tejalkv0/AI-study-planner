@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI Study Planner</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap">
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--ink:#14213d;--mute:#5b6783;--line:#dbe2ef;--acc:#1b998b;--hot:#e8590c;--soft:#e3f4f1;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1424;--card:#171f35;--ink:#e8edf8;--mute:#9aa6c4;--line:#2a3554;--acc:#3cc9b9;--hot:#ff8a4c;--soft:#12332f}}
+:root[data-theme="dark"]{--bg:#0e1424;--card:#171f35;--ink:#e8edf8;--mute:#9aa6c4;--line:#2a3554;--acc:#3cc9b9;--hot:#ff8a4c;--soft:#12332f}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Manrope,system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5}
+main{max-width:920px;margin:0 auto;padding:24px 16px 56px}
+h1{font-size:clamp(1.8rem,5vw,2.6rem);margin:0 0 4px;font-weight:800;letter-spacing:-.02em}
+h2{font-size:1.15rem;margin:28px 0 10px}
+p.sub{margin:0 0 20px;color:var(--mute);max-width:60ch}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.row{display:grid;grid-template-columns:2fr 1.3fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:10px}
+label{font-size:.8rem;color:var(--mute);display:block;margin-bottom:3px}
+input,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button{font:inherit;border:0;border-radius:8px;padding:10px 16px;cursor:pointer;font-weight:600}
+.pri{background:var(--acc);color:#04201d}.ghost{background:transparent;color:var(--mute);border:1px solid var(--line)}
+.x{padding:9px 12px}
+.bar{height:10px;border-radius:6px;background:var(--line);overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%;background:var(--acc)}
+.rank{display:grid;gap:10px}
+.rk{display:grid;grid-template-columns:1fr;gap:2px}
+.rk b{font-size:1rem}.rk small{color:var(--mute)}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.75rem;font-weight:600;background:var(--soft);color:var(--acc)}
+.tag.hot{background:rgba(232,89,12,.14);color:var(--hot)}
+.day{margin-bottom:10px}
+.day h3{margin:0 0 8px;font-size:.95rem;display:flex;justify-content:space-between;gap:8px}
+.blk{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;border-radius:8px;background:var(--bg);margin-top:6px;flex-wrap:wrap}
+.how{color:var(--mute);font-size:.9rem}
+.how code{background:var(--bg);padding:1px 6px;border-radius:5px;color:var(--ink)}
+.err{color:var(--hot);font-weight:600;margin:8px 0 0}
+.bt{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+@media(max-width:700px){.row{grid-template-columns:1fr 1fr}.row .nm{grid-column:1/-1}}
+@media print{.noprint{display:none}body{background:#fff;color:#000}}
+</style>
+</head>
+<body>
+<main>
+<h1>AI Study Planner</h1>
+<p class="sub">Add your subjects, exam dates, difficulty and confidence. The planner scores each subject and builds a day-by-day timetable that gives the most time to what needs it most.</p>
+
+<div class="card noprint">
+  <div id="rows"></div>
+  <div class="bt">
+    <button class="ghost" id="add">Add subject</button>
+    <button class="ghost" id="demo">Load sample data</button>
+  </div>
+  <div class="row" style="margin-top:14px;grid-template-columns:1fr 1fr auto">
+    <div><label for="hrs">Study hours per day</label><input id="hrs" type="number" min="1" max="14" step="0.5" value="5"></div>
+    <div><label for="start">Start date</label><input id="start" type="date"></div>
+    <button class="pri" id="go">Generate plan</button>
+  </div>
+  <div id="err" class="err" role="alert"></div>
+</div>
+
+<div id="out" hidden>
+  <h2>Priority ranking</h2>
+  <div class="card rank" id="rank"></div>
+  <h2>Your timetable</h2>
+  <div id="plan"></div>
+  <div class="bt noprint"><button class="ghost" onclick="window.print()">Print or save as PDF</button></div>
+</div>
+
+<h2>How the planner decides</h2>
+<div class="card how">
+  <p><b>1. Priority score</b> for each subject: <code>difficulty × (6 − confidence) × (1 + 10 ÷ days left)</code>. Harder subjects, weaker confidence and closer exams all raise the score.</p>
+  <p><b>2. Daily allocation:</b> each day, the study hours are split among subjects whose exam is still ahead, in proportion to their score. That day's weight also rises as the exam gets closer. Time is given in 30-minute blocks using the largest-remainder method so the total always equals your daily hours.</p>
+  <p><b>3. Session type:</b> the first 60% of a subject's days are <i>Learn</i>, the next 25% are <i>Practice</i>, and the last 15% (at least the final day) are <i>Revise</i>.</p>
+  <p>This is a rule-based, weighted scoring model: it is transparent and every number can be explained, which makes it easy to defend in a demo.</p>
+</div>
+</main>
+
+<script>
+const DAY=864e5;
+const $=id=>document.getElementById(id);
+const iso=d=>d.toISOString().slice(0,10);
+const parse=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(Date.UTC(y,m-1,d))};
+const fmt=d=>d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'});
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function addRow(v={}){
+  const r=document.createElement('div');r.className='row';
+  const opts=(sel)=>[1,2,3,4,5].map(n=>`<option value="${n}"${n==sel?' selected':''}>${n}</option>`).join('');
+  r.innerHTML=`<div class="nm"><label>Subject</label><input class="n" value="${esc(v.n||'')}" placeholder="e.g. Operating Systems"></div>
+  <div><label>Exam date</label><input class="d" type="date" value="${v.d||''}"></div>
+  <div><label>Difficulty (1-5)</label><select class="f">${opts(v.f||3)}</select></div>
+  <div><label>Confidence (1-5)</label><select class="c">${opts(v.c||3)}</select></div>
+  <button class="ghost x" aria-label="Remove subject">✕</button>`;
+  r.querySelector('.x').onclick=()=>r.remove();
+  $('rows').appendChild(r);
+}
+
+function demo(){
+  const t=parse($('start').value),p=n=>iso(new Date(t.getTime()+n*DAY));
+  $('rows').innerHTML='';
+  [{n:'Operating Systems',d:p(6),f:4,c:2},{n:'Data Structures',d:p(9),f:5,c:3},
+   {n:'DBMS',d:p(11),f:3,c:4},{n:'Computer Networks',d:p(13),f:4,c:2}].forEach(addRow);
+}
+
+function plan(subs,hours,start){
+  const last=Math.max(...subs.map(s=>s.date));
+  const total=Math.round((last-start)/DAY)+1;
+  subs.forEach(s=>{
+    const dl=Math.max(1,Math.round((s.date-start)/DAY)+1);
+    s.daysLeft=dl;
+    s.score=s.f*(6-s.c)*(1+10/dl);
+    s.days=dl;s.done=0;s.mins=0;
+  });
+  const sumScore=subs.reduce((a,s)=>a+s.score,0);
+  subs.forEach(s=>s.share=s.score/sumScore);
+  const days=[];
+  const slots=Math.round(hours*2);
+  for(let i=0;i<total&&i<30;i++){
+    const day=new Date(start.getTime()+i*DAY);
+    const act=subs.filter(s=>s.date>=day);
+    if(!act.length)break;
+    const w=act.map(s=>{const left=Math.max(1,Math.round((s.date-day)/DAY)+1);return s.score*(1+5/left)});
+    const tw=w.reduce((a,b)=>a+b,0);
+    const raw=w.map(x=>x/tw*slots);
+    const fl=raw.map(Math.floor);
+    let rem=slots-fl.reduce((a,b)=>a+b,0);
+    raw.map((x,j)=>[x-fl[j],j]).sort((a,b)=>b[0]-a[0]).forEach(([,j])=>{if(rem>0){fl[j]++;rem--}});
+    const blocks=[];
+    act.forEach((s,j)=>{
+      if(!fl[j])return;
+      const prog=(i+1)/s.days;
+      const left=Math.round((s.date-day)/DAY);
+      const type=(left<=1||prog>.85)?'Revise':prog>.6?'Practice':'Learn';
+      s.mins+=fl[j]*30;
+      blocks.push({n:s.n,h:fl[j]/2,type,left});
+    });
+    blocks.sort((a,b)=>b.h-a.h);
+    const exams=subs.filter(s=>iso(s.date)===iso(day)).map(s=>s.n);
+    days.push({day,blocks,exams});
+  }
+  return days;
+}
+
+function render(subs,days){
+  const max=Math.max(...subs.map(s=>s.score));
+  $('rank').innerHTML=[...subs].sort((a,b)=>b.score-a.score).map((s,i)=>{
+    const hot=i===0;
+    return `<div class="rk"><div><b>${esc(s.n)}</b> <span class="tag${hot?' hot':''}">${hot?'Top priority':'Score '+s.score.toFixed(1)}</span></div>
+    <div class="bar"><i style="width:${(s.score/max*100).toFixed(0)}%"></i></div>
+    <small>Difficulty ${s.f}, confidence ${s.c}, exam in ${s.daysLeft} day${s.daysLeft>1?'s':''}. Gets about ${(s.share*100).toFixed(0)}% of your study time (${(s.mins/60).toFixed(1)} h in total).</small></div>`}).join('');
+  $('plan').innerHTML=days.map((d,i)=>`<div class="card day"><h3><span>Day ${i+1}: ${fmt(d.day)}</span>${d.exams.length?`<span class="tag hot">Exam: ${esc(d.exams.join(', '))}</span>`:''}</h3>
+    ${d.blocks.map(b=>`<div class="blk"><span><b>${esc(b.n)}</b></span><span>${b.h} h <span class="tag${b.type==='Revise'?' hot':''}">${b.type}</span></span></div>`).join('')}</div>`).join('');
+  $('out').hidden=false;
+  $('out').scrollIntoView({behavior:'smooth'});
+}
+
+$('add').onclick=()=>addRow();
+$('demo').onclick=demo;
+$('go').onclick=()=>{
+  $('err').textContent='';
+  const hours=parseFloat($('hrs').value);
+  if(!$('start').value||!(hours>=1)){$('err').textContent='Enter a start date and at least 1 study hour per day.';return}
+  const start=parse($('start').value);
+  const subs=[...document.querySelectorAll('#rows .row')].map(r=>({
+    n:r.querySelector('.n').value.trim(),d:r.querySelector('.d').value,
+    f:+r.querySelector('.f').value,c:+r.querySelector('.c').value}));
+  if(!subs.length){$('err').textContent='Add at least one subject.';return}
+  for(const s of subs){
+    if(!s.n||!s.d){$('err').textContent='Every subject needs a name and an exam date.';return}
+    s.date=parse(s.d);
+    if(s.date<start){$('err').textContent=`The exam date for ${s.n} is before the start date.`;return}
+  }
+  render(subs,plan(subs,hours,start));
+};
+$('start').value=iso(new Date(Date.UTC(new Date().getFullYear(),new Date().getMonth(),new Date().getDate())));
+demo();
+</script>
+</body>
+</html>
